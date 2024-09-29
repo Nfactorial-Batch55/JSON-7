@@ -8,6 +8,12 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 fastapi = "^0.115.0"
+uvicorn = "^0.30.6"
+fastapi-cli = "^0.0.5"
+pydantic = "^2.9.2"
+sqlalchemy = "^2.0.35"
+pyjwt = "^2.9.0"
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
 
 
 [build-system]

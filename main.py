@@ -1,54 +1,90 @@
-from typing import Optional
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from pydantic import BaseModel
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+import sqlite3
 
-from fastapi import FastAPI, HTTPException, Form, File, UploadFile
-from pydantic import EmailStr, BaseModel
+# Конфигурация
+SECRET_KEY = "your_secret_key"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+# Инициализация
+app = FastAPI()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-class UserSignUp(BaseModel):
+# Модель пользователя
+class User(BaseModel):
     username: str
-    email: EmailStr
     password: str
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
-class UsersRepository:
-    def __init__(self):
-        self.users = []
+class UserInDB(User):
+    hashed_password: str
 
-    def add_user(self, user_data):
-        if any(user == user_data['email'] for user in self.users):
-            raise HTTPException(status_code=400, detail='Email already')
-        self.users.append(user_data)
-        return user_data
+class FlowerCreate(BaseModel):
+    name: str
+    color: str
 
-users_repo = UsersRepository()
 
-@app.post('/signup', status_code=200)
-async def signup(
-    username: str = Form(...),
-    email: EmailStr = Form(...),
-    password: str = Form(...),
-    profile_picture = Optional[UploadFile] = File(None)
-):
-    if profile_picture:
-        file_location = f"profile_pictures/{profile_picture.filename}"
-        with open(file_location, 'cm') as buffer:
-            shutil.copyfileobj(profile_picture.file, buffer)
-    else:
-        file_location = None
+#main
 
-    new_user = {
-        'username': username,
-        'email': email,
-        'password': passwords,
-        'profile_picture': profile_picture,
-    }
 
+@app.post("/signup")
+def signup(user: User):
+    hashed_password = get_password_hash(user.password)
+    user_in_db = UserInDB(username=user.username, hashed_password=hashed_password)
+    create_user(user_in_db)
+    return {"message": "User registered successfully"}
+
+@app.post("/token", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/profile")
+def read_profile(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
-        saved_user = users_repo.add_user(new_user)
-    except HTTPException as e:
-        raise e
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = get_user(username)
+    if user is None:
+        raise credentials_exception
+    return {"username": user.username}\
 
-    return {saved_user}
+@app.post('/flowers')
+def add_flower(flower: FlowerCreate):
+    new_flower = Flower(name=flower.name, color=flower.color)
+    flower_id = flowers_repository.add_flower(new_flower)
+    return {'id': flower_id}
 
+@app.get('/flowers')
+def get_flowers():
+    flowers = flowers_repository.get_all_flowers()
+    return flowers
 
-
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run(main, host="0.0.0.0", port=8000)
