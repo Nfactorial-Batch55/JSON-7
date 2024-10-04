@@ -1,10 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Form, Cookie, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import sqlite3
+from typing import Optional
+from repositories.users_repository import UsersRepository
+from repositories.flowers_repository import FlowersRepository, Flower
+from repositories.cart_repository import CartRepository
+from auth import authenticate_user, create_access_token
 
 # Конфигурация
 SECRET_KEY = "your_secret_key"
@@ -84,6 +89,78 @@ def add_flower(flower: FlowerCreate):
 def get_flowers():
     flowers = flowers_repository.get_all_flowers()
     return flowers
+
+@app.post('/items')
+def add_to_cart(flower_id: int = Form(), cart: Optional[str] = Cookie(None)):
+    if cart:
+        cart_items = cart.split(',')
+    else:
+        cart_items = []
+    cart_items.append(str(flower_id))
+    response = {'message': 'Flower added to cart'}
+    response.set_cookie(key="cart", value=",".join(cart_items))
+    return response
+
+@app.get("/cart/items")
+def get_cart_items(cart: Optional[str] = Cookie(None)):
+    if cart:
+        cart_items = cart.split(',')
+    else:
+        cart_items = []
+    flowers = [flowers_repository.get_flower_by_id(int(flower_id)) for flower_id in cart_items]
+    total_price = sum(flower["price"] for flower in flowers)
+    return {"flowers": flowers, "total_price": total_price}
+
+
+@app.post("/purchased")
+def purchase_items(token: str = Depends(oauth2_scheme), cart: Optional[str] = Cookie(None)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = get_user(username)
+    if user is None:
+        raise credentials_exception
+
+    if cart:
+        cart_items = cart.split(',')
+    else:
+        cart_items = []
+    for flower_id in cart_items:
+        cart_repository.add_purchased(user["id"], int(flower_id))
+    response = {"message": "Flowers purchased successfully"}
+    response.delete_cookie("cart")
+    return response
+
+@app.get("/purchased")
+def get_purchased_items(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    user = get_user(username)
+    if user is None:
+        raise credentials_exception
+
+    purchased_items = cart_repository.get_purchased(user["id"])
+    flowers = [flowers_repository.get_flower_by_id(item["flower_id"]) for item in purchased_items]
+    return {"flowers": flowers}
 
 if __name__ == '__main__':
     import uvicorn
