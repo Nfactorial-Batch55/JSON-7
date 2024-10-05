@@ -135,11 +135,12 @@ def add_to_cart(flower_id: int = Form(), cart: Optional[str] = Cookie(None)):
     return response
 
 @app.get("/cart/items")
-def get_cart_items(cart: Optional[str] = Cookie(None)):
+def get_cart_items(cart: Optional[str] = Cookie(None), db: Session = Depends(get_db_connection)):
     if cart:
         cart_items = cart.split(',')
     else:
         cart_items = []
+    flower_repository = FlowersRepository(db)
     flowers = [flowers_repository.get_flower_by_id(int(flower_id)) for flower_id in cart_items]
     total_price = sum(flower["price"] for flower in flowers)
     return {"flowers": flowers, "total_price": total_price}
