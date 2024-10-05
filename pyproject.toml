@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-fastapi = "^0.115.0"
+fastapi = {extras = ["all"], version = "^0.115.0"}
 uvicorn = "^0.30.6"
 fastapi-cli = "^0.0.5"
 pydantic = "^2.9.2"

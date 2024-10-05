@@ -1,11 +1,15 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Form, Cookie, Response
+from fastapi import FastAPI, Depends, HTTPException, status, Form, Cookie
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import sqlite3
-from typing import Optional
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
+from database import get_db_connection
 from repositories.users_repository import UsersRepository
 from repositories.flowers_repository import FlowersRepository, Flower
 from repositories.cart_repository import CartRepository
@@ -42,14 +46,16 @@ class FlowerCreate(BaseModel):
 
 
 @app.post("/signup")
-def signup(user: User):
-    hashed_password = get_password_hash(user.password)
-    user_in_db = UserInDB(username=user.username, hashed_password=hashed_password)
-    create_user(user_in_db)
+def signup(user: User, db: Session = Depends(get_db_connection)):
+    users_repository = UsersRepository(db)
+    db_user = users_repository.get_user_by_username(user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    users_repository.create_user(user.username, user.password)
     return {"message": "User registered successfully"}
 
 @app.post("/token", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db_connection)):
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -61,7 +67,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/profile")
-def read_profile(token: str = Depends(oauth2_scheme)):
+def read_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db_connection)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -77,7 +83,7 @@ def read_profile(token: str = Depends(oauth2_scheme)):
     user = get_user(username)
     if user is None:
         raise credentials_exception
-    return {"username": user.username}\
+    return {"username": user.username}
 
 @app.post('/flowers')
 def add_flower(flower: FlowerCreate):

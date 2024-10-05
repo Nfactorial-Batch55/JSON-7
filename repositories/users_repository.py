@@ -1,4 +1,5 @@
 from fastapi import Depends, HTTPException
+from sqlalchemy.orm import Session
 
 from database import get_db_connection
 from models import User
@@ -9,27 +10,19 @@ def get_password_hash():
     return get_password_hash()
 
 class UsersRepository:
-    def __init__(self):
-        self.conn = get_db_connection()
-        self.create_table()
+    def __init__(self, db: Session):
+        self.db = db
 
-    def create_table(self):
-        with self.conn:
-            self.conn.execute('''
-                    CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT NOT NULL,
-                    password TEXT NOT NULL
-                    )
-            ''')
+    def create_user(self, username: str, password: str):
+        hashed_password = get_password_hash(password)
+        db_user = User(username=username, password=hashed_password)
+        self.db.add(db_user)
+        self.db.commit()
+        self.db.refresh(db_user)
+        return db_user
 
-    def add_user(self, user):
-        with self.conn:
-            self.conn.execute('INSERT INTO users (username, password) VALUES (?, ?)', (user.username, hashed_password))
-
-    def get_user_by_username(self, username):
-        user = self.conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-        return user
+    def get_user_by_username(self, username: str):
+        return self.db.query(User).filter(User.username == username).first()
 
 def get_current_user(token: str = Depends(oauth2_scheme), users_repository: UsersRepository = Depends()):
     credentials_exception = HTTPException(
