@@ -3,6 +3,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
 from models import User
 
 SECRET_KEY = 'simplepass'
@@ -33,8 +35,8 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     return encoded_jwt
 
 
-def authenticate_user(username: str, password: str):
-    users_repository = get_users_repository
+def authenticate_user(db: Session, username: str, password: str):
+    users_repository = UsersRepository(db)
     user = users_repository.get_user_by_username(username)
     if not user:
         return False

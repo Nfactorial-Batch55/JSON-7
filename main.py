@@ -41,6 +41,10 @@ class FlowerCreate(BaseModel):
     name: str
     color: str
 
+class FlowerUpdate(BaseModel):
+    name: Optional[str] = None
+    color: Optional[str] = None
+
 
 #main
 
@@ -80,21 +84,44 @@ def read_profile(token: str = Depends(oauth2_scheme), db: Session = Depends(get_
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-    user = get_user(username)
+    users_repository = UsersRepository(db)
+    user = users_repository.get_user_by_username(username)
     if user is None:
         raise credentials_exception
     return {"username": user.username}
 
+#flowers
+
 @app.post('/flowers')
-def add_flower(flower: FlowerCreate):
-    new_flower = Flower(name=flower.name, color=flower.color)
-    flower_id = flowers_repository.add_flower(new_flower)
+def add_flower(flower: FlowerCreate, db: Session = Depends(get_db_connection)):
+    flowers_repository = FlowersRepository(db)
+    flower_id = flowers_repository.add_flower(flower.name, flower.color)
     return {'id': flower_id}
 
 @app.get('/flowers')
-def get_flowers():
-    flowers = flowers_repository.get_all_flowers()
+def get_flowers(db: Session = Depends(get_db_connection)):
+    flowers_repository = FlowersRepository(db)
+    flowers_repository = flowers_repository.get_all_flowers()
     return flowers
+
+@app.patch('/flowers')
+def update_flowers(flower_id: int, flower: FlowerUpdate, db: Session = Depends(get_db_connection)):
+    flowers_repository = FlowersRepository(db)
+    updated_flower = flowers_repository.update_flower(flower_id, flower.name, flower.color)
+    if not updated_flower:
+        raise HTTPException(status_code=404, detail='Updated')
+    return updated_flower
+
+@app.delete('/flowers')
+def delete_flower(flower_id: int, db: Session = Depends(get_db_connection)):
+    flowers_repository = FlowersRepository(db)
+    deleted_flower = flowers_repository.delete_flower(flower_id)
+    if not deleted_flower:
+        raise HTTPException(status_code=404, delail='Flower not found')
+    return {"message": "Flower deleted successfully"}
+
+
+#cart
 
 @app.post('/items')
 def add_to_cart(flower_id: int = Form(), cart: Optional[str] = Cookie(None)):
